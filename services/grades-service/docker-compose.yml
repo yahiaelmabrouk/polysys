@@ -1,0 +1,82 @@
+version: '3.9'
+
+services:
+  grades-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: grades-service
+    restart: unless-stopped
+    ports:
+      - "3005:3005"
+    environment:
+      NODE_ENV: production
+      PORT: 3005
+      DATABASE_URL: postgresql://grades_user:grades_pass@postgres:5432/grades_db?schema=public
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+      AUTH_SERVICE_URL: ${AUTH_SERVICE_URL:-http://auth-service:3001}
+      STUDENTS_SERVICE_URL: ${STUDENTS_SERVICE_URL:-http://students-service:3002}
+      COURSES_SERVICE_URL: ${COURSES_SERVICE_URL:-http://courses-service:3003}
+      ENROLLMENT_SERVICE_URL: ${ENROLLMENT_SERVICE_URL:-http://enrollment-service:3004}
+      CLIENT_URL: ${CLIENT_URL:-http://localhost:3000}
+      THROTTLE_TTL: 60
+      THROTTLE_LIMIT: 60
+      DEFAULT_PASS_PERCENTAGE: 50
+      ALLOW_TEACHER_PUBLISH: "false"
+      TRANSCRIPT_NUMBER_PREFIX: "TR"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - grades-network
+      - shared-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: grades-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: grades_user
+      POSTGRES_PASSWORD: grades_pass
+      POSTGRES_DB: grades_db
+    volumes:
+      - grades_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U grades_user -d grades_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - grades-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: grades-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - grades_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - grades-network
+
+volumes:
+  grades_postgres_data:
+  grades_redis_data:
+
+networks:
+  grades-network:
+    driver: bridge
+  shared-network:
+    external: true
+    name: university-network

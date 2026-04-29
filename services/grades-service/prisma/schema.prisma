@@ -1,0 +1,282 @@
+// Grades Service Prisma schema
+// Owns: assessments, grades, final course results, GPA snapshots,
+// transcripts, regrade requests, grading scales, grade audit logs.
+// Does NOT own: auth users, student master profiles, course catalog,
+// active registrations, schedules, billing.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum AssessmentType {
+  ASSIGNMENT
+  QUIZ
+  MIDTERM
+  FINAL_EXAM
+  PROJECT
+  PARTICIPATION
+  LAB
+
+  @@map("assessment_type")
+}
+
+enum AssessmentStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+  ARCHIVED
+
+  @@map("assessment_status")
+}
+
+enum GradeStatus {
+  DRAFT
+  PUBLISHED
+  AMENDED
+
+  @@map("grade_status")
+}
+
+enum ResultStatus {
+  PASS
+  FAIL
+  INCOMPLETE
+  WITHDRAWN
+
+  @@map("result_status")
+}
+
+enum TranscriptRequestType {
+  OFFICIAL
+  UNOFFICIAL
+  DIGITAL
+
+  @@map("transcript_request_type")
+}
+
+enum TranscriptStatus {
+  REQUESTED
+  PROCESSING
+  COMPLETED
+  REJECTED
+
+  @@map("transcript_status")
+}
+
+enum AcademicStanding {
+  GOOD
+  WARNING
+  PROBATION
+  HONORS
+
+  @@map("academic_standing")
+}
+
+enum RegradeStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+
+  @@map("regrade_status")
+}
+
+// ─── Assessments ──────────────────────────────────────────────────────────────
+
+model Assessment {
+  id                String           @id @default(uuid())
+  courseId          String           @map("course_id")
+  academicTerm      String           @map("academic_term")
+  sectionCode       String?          @map("section_code")
+  title             String
+  type              AssessmentType
+  description       String?          @db.Text
+  maxScore          Decimal          @map("max_score") @db.Decimal(8, 2)
+  weightPercentage  Decimal          @map("weight_percentage") @db.Decimal(5, 2)
+  dueDate           DateTime?        @map("due_date")
+  examDate          DateTime?        @map("exam_date")
+  createdByUserId   String           @map("created_by_user_id")
+  status            AssessmentStatus @default(DRAFT)
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+
+  grades            Grade[]
+
+  @@index([courseId])
+  @@index([academicTerm])
+  @@index([courseId, academicTerm])
+  @@index([courseId, academicTerm, sectionCode])
+  @@index([type])
+  @@index([status])
+  @@map("assessments")
+}
+
+// ─── Grades ───────────────────────────────────────────────────────────────────
+
+model Grade {
+  id                String      @id @default(uuid())
+  assessmentId      String      @map("assessment_id")
+  studentId         String      @map("student_id")
+  enrollmentId      String?     @map("enrollment_id")
+  rawScore          Decimal     @map("raw_score") @db.Decimal(8, 2)
+  percentageScore   Decimal     @map("percentage_score") @db.Decimal(5, 2)
+  letterGrade       String?     @map("letter_grade")
+  remarks           String?     @db.Text
+  gradedByUserId    String      @map("graded_by_user_id")
+  gradedAt          DateTime    @default(now()) @map("graded_at")
+  status            GradeStatus @default(DRAFT)
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+
+  assessment        Assessment  @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  regradeRequests   RegradeRequest[]
+
+  @@unique([assessmentId, studentId])
+  @@index([studentId])
+  @@index([assessmentId])
+  @@index([enrollmentId])
+  @@index([status])
+  @@index([studentId, status])
+  @@map("grades")
+}
+
+// ─── Final Course Results ─────────────────────────────────────────────────────
+
+model FinalCourseResult {
+  id              String       @id @default(uuid())
+  studentId       String       @map("student_id")
+  courseId        String       @map("course_id")
+  academicTerm    String       @map("academic_term")
+  enrollmentId    String?      @map("enrollment_id")
+  weightedScore   Decimal      @map("weighted_score") @db.Decimal(5, 2)
+  letterGrade     String       @map("letter_grade")
+  gradePoints     Decimal      @map("grade_points") @db.Decimal(4, 2)
+  creditsEarned   Decimal      @map("credits_earned") @db.Decimal(5, 2)
+  resultStatus    ResultStatus @map("result_status")
+  publishedAt     DateTime?    @map("published_at")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  @@unique([studentId, courseId, academicTerm])
+  @@index([studentId])
+  @@index([courseId])
+  @@index([academicTerm])
+  @@index([studentId, academicTerm])
+  @@index([courseId, academicTerm])
+  @@index([resultStatus])
+  @@index([publishedAt])
+  @@map("final_course_results")
+}
+
+// ─── Transcripts ──────────────────────────────────────────────────────────────
+
+model Transcript {
+  id                  String                @id @default(uuid())
+  studentId           String                @map("student_id")
+  transcriptNumber    String                @unique @map("transcript_number")
+  requestType         TranscriptRequestType @map("request_type")
+  generatedFileUrl    String?               @map("generated_file_url")
+  requestedByUserId   String                @map("requested_by_user_id")
+  approvedByUserId    String?               @map("approved_by_user_id")
+  status              TranscriptStatus      @default(REQUESTED)
+  rejectionReason     String?               @map("rejection_reason")
+  payloadSnapshot     Json?                 @map("payload_snapshot")
+  createdAt           DateTime              @default(now()) @map("created_at")
+  completedAt         DateTime?             @map("completed_at")
+
+  @@index([studentId])
+  @@index([transcriptNumber])
+  @@index([status])
+  @@index([requestType])
+  @@map("transcripts")
+}
+
+// ─── GPA Snapshots ────────────────────────────────────────────────────────────
+
+model GpaSnapshot {
+  id                String           @id @default(uuid())
+  studentId         String           @map("student_id")
+  academicTerm      String           @map("academic_term")
+  termGpa           Decimal          @map("term_gpa") @db.Decimal(4, 2)
+  cumulativeGpa     Decimal          @map("cumulative_gpa") @db.Decimal(4, 2)
+  creditsAttempted  Decimal          @map("credits_attempted") @db.Decimal(6, 2)
+  creditsEarned     Decimal          @map("credits_earned") @db.Decimal(6, 2)
+  academicStanding  AcademicStanding @map("academic_standing")
+  calculatedAt      DateTime         @default(now()) @map("calculated_at")
+
+  @@unique([studentId, academicTerm])
+  @@index([studentId])
+  @@index([academicTerm])
+  @@index([studentId, academicTerm])
+  @@index([academicStanding])
+  @@map("gpa_snapshots")
+}
+
+// ─── Regrade Requests ─────────────────────────────────────────────────────────
+
+model RegradeRequest {
+  id                  String        @id @default(uuid())
+  gradeId             String        @map("grade_id")
+  studentId           String        @map("student_id")
+  reason              String        @db.Text
+  status              RegradeStatus @default(SUBMITTED)
+  reviewedByUserId    String?       @map("reviewed_by_user_id")
+  reviewerComment     String?       @map("reviewer_comment") @db.Text
+  newScore            Decimal?      @map("new_score") @db.Decimal(8, 2)
+  createdAt           DateTime      @default(now()) @map("created_at")
+  resolvedAt          DateTime?     @map("resolved_at")
+
+  grade               Grade         @relation(fields: [gradeId], references: [id], onDelete: Cascade)
+
+  @@index([gradeId])
+  @@index([studentId])
+  @@index([status])
+  @@map("regrade_requests")
+}
+
+// ─── Grading Scales ───────────────────────────────────────────────────────────
+
+model GradingScale {
+  id              String   @id @default(uuid())
+  name            String
+  minPercentage   Decimal  @map("min_percentage") @db.Decimal(5, 2)
+  maxPercentage   Decimal  @map("max_percentage") @db.Decimal(5, 2)
+  letterGrade     String   @map("letter_grade")
+  gradePoints     Decimal  @map("grade_points") @db.Decimal(4, 2)
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([name, letterGrade])
+  @@index([name])
+  @@index([isActive])
+  @@index([letterGrade])
+  @@map("grading_scales")
+}
+
+// ─── Audit Logs ───────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?  @map("user_id")
+  action    String
+  entity    String?
+  entityId  String?  @map("entity_id")
+  metadata  Json?
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([action])
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
