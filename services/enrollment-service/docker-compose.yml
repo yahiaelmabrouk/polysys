@@ -1,0 +1,86 @@
+version: '3.9'
+
+services:
+  enrollment-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: enrollment-service
+    restart: unless-stopped
+    ports:
+      - "3004:3004"
+    environment:
+      NODE_ENV: production
+      PORT: 3004
+      DATABASE_URL: postgresql://enrollment_user:enrollment_pass@postgres:5432/enrollment_db?schema=public
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+      AUTH_SERVICE_URL: ${AUTH_SERVICE_URL:-http://auth-service:3001}
+      STUDENTS_SERVICE_URL: ${STUDENTS_SERVICE_URL:-http://students-service:3002}
+      COURSES_SERVICE_URL: ${COURSES_SERVICE_URL:-http://courses-service:3003}
+      GRADES_SERVICE_URL: ${GRADES_SERVICE_URL:-http://grades-service:3005}
+      CLIENT_URL: ${CLIENT_URL:-http://localhost:3000}
+      THROTTLE_TTL: 60
+      THROTTLE_LIMIT: 60
+      MIN_FULL_TIME_CREDITS: 12
+      MAX_STANDARD_CREDITS: 18
+      MAX_OVERLOAD_CREDITS: 24
+      WAITLIST_RESERVATION_TTL_HOURS: 48
+      ENROLLMENT_LOCK_TTL_SECONDS: 10
+      ENABLE_PREREQUISITE_CHECK: "true"
+      ENABLE_SCHEDULE_CONFLICT_CHECK: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - enrollment-network
+      - shared-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: enrollment-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: enrollment_user
+      POSTGRES_PASSWORD: enrollment_pass
+      POSTGRES_DB: enrollment_db
+    volumes:
+      - enrollment_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U enrollment_user -d enrollment_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - enrollment-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: enrollment-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - enrollment_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - enrollment-network
+
+volumes:
+  enrollment_postgres_data:
+  enrollment_redis_data:
+
+networks:
+  enrollment-network:
+    driver: bridge
+  shared-network:
+    external: true
+    name: university-network

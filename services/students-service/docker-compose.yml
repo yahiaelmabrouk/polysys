@@ -1,0 +1,78 @@
+version: '3.9'
+
+services:
+  students-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: students-service
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      NODE_ENV: production
+      PORT: 3002
+      DATABASE_URL: postgresql://students_user:students_pass@postgres:5432/students_db?schema=public
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+      AUTH_SERVICE_URL: ${AUTH_SERVICE_URL:-http://auth-service:3001}
+      CLIENT_URL: ${CLIENT_URL:-http://localhost:3000}
+      THROTTLE_TTL: 60
+      THROTTLE_LIMIT: 60
+      ATTENDANCE_LOCK_DAYS: 7
+      LOW_ATTENDANCE_THRESHOLD: 75
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - students-network
+      - shared-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: students-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: students_user
+      POSTGRES_PASSWORD: students_pass
+      POSTGRES_DB: students_db
+    volumes:
+      - students_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U students_user -d students_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - students-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: students-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - students_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - students-network
+
+volumes:
+  students_postgres_data:
+  students_redis_data:
+
+networks:
+  students-network:
+    driver: bridge
+  shared-network:
+    external: true
+    name: university-network

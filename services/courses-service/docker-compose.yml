@@ -1,0 +1,79 @@
+version: '3.9'
+
+services:
+  courses-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: courses-service
+    restart: unless-stopped
+    ports:
+      - "3003:3003"
+    environment:
+      NODE_ENV: production
+      PORT: 3003
+      DATABASE_URL: postgresql://courses_user:courses_pass@postgres:5432/courses_db?schema=public
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+      AUTH_SERVICE_URL: ${AUTH_SERVICE_URL:-http://auth-service:3001}
+      CLIENT_URL: ${CLIENT_URL:-http://localhost:3000}
+      THROTTLE_TTL: 60
+      THROTTLE_LIMIT: 60
+      MIN_COURSE_CREDITS: 1
+      MAX_COURSE_CREDITS: 10
+      ALLOW_DECIMAL_CREDITS: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - courses-network
+      - shared-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: courses-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: courses_user
+      POSTGRES_PASSWORD: courses_pass
+      POSTGRES_DB: courses_db
+    volumes:
+      - courses_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U courses_user -d courses_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - courses-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: courses-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - courses_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - courses-network
+
+volumes:
+  courses_postgres_data:
+  courses_redis_data:
+
+networks:
+  courses-network:
+    driver: bridge
+  shared-network:
+    external: true
+    name: university-network

@@ -1,0 +1,246 @@
+// Courses Service Prisma schema
+// Owns: departments, subjects, course catalog, prerequisites,
+// teacher assignments, course tags, catalog versions.
+// Does NOT own: auth users, student records, enrollments, grades,
+// schedules/timetables, finance/billing.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum CourseLevel {
+  L100
+  L200
+  L300
+  L400
+  GRADUATE
+
+  @@map("course_level")
+}
+
+enum SemesterType {
+  FALL
+  SPRING
+  SUMMER
+  ALL
+
+  @@map("semester_type")
+}
+
+enum DeliveryMode {
+  ONSITE
+  ONLINE
+  HYBRID
+
+  @@map("delivery_mode")
+}
+
+enum CourseStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+
+  @@map("course_status")
+}
+
+enum PrerequisiteType {
+  REQUIRED
+  RECOMMENDED
+  COREQUISITE
+
+  @@map("prerequisite_type")
+}
+
+enum AssignmentStatus {
+  ACTIVE
+  REMOVED
+
+  @@map("assignment_status")
+}
+
+// ─── Departments ──────────────────────────────────────────────────────────────
+
+model Department {
+  id           String   @id @default(uuid())
+  code         String   @unique
+  name         String
+  description  String?
+  facultyName  String?  @map("faculty_name")
+  headUserId   String?  @map("head_user_id")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  subjects     Subject[]
+  courses      Course[]
+
+  @@index([code])
+  @@index([isActive])
+  @@index([name])
+  @@map("departments")
+}
+
+// ─── Subjects ─────────────────────────────────────────────────────────────────
+
+model Subject {
+  id            String   @id @default(uuid())
+  code          String   @unique
+  name          String
+  description   String?
+  departmentId  String   @map("department_id")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  department    Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  courses       Course[]
+
+  @@index([code])
+  @@index([departmentId])
+  @@index([isActive])
+  @@index([name])
+  @@map("subjects")
+}
+
+// ─── Courses (catalog) ────────────────────────────────────────────────────────
+
+model Course {
+  id                  String       @id @default(uuid())
+  courseCode          String       @unique @map("course_code")
+  title               String
+  slug                String?      @unique
+  subjectId           String       @map("subject_id")
+  departmentId        String       @map("department_id")
+  description         String?      @db.Text
+  credits             Decimal      @db.Decimal(4, 2)
+  level               CourseLevel
+  semesterType        SemesterType @default(ALL) @map("semester_type")
+  capacityDefault     Int          @default(30) @map("capacity_default")
+  durationWeeks       Int          @default(15) @map("duration_weeks")
+  language            String?
+  deliveryMode        DeliveryMode @default(ONSITE) @map("delivery_mode")
+  status              CourseStatus @default(DRAFT)
+  createdByUserId     String       @map("created_by_user_id")
+  createdAt           DateTime     @default(now()) @map("created_at")
+  updatedAt           DateTime     @updatedAt @map("updated_at")
+
+  subject             Subject      @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  department          Department   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+
+  prerequisites       CoursePrerequisite[] @relation("CoursePrereqs")
+  prerequisiteFor     CoursePrerequisite[] @relation("PrereqOfCourses")
+  teacherAssignments  TeacherAssignment[]
+  tags                CourseTag[]
+
+  @@index([courseCode])
+  @@index([title])
+  @@index([departmentId])
+  @@index([subjectId])
+  @@index([status])
+  @@index([level])
+  @@index([semesterType])
+  @@index([deliveryMode])
+  @@map("courses")
+}
+
+// ─── Prerequisites ────────────────────────────────────────────────────────────
+
+model CoursePrerequisite {
+  id                   String           @id @default(uuid())
+  courseId             String           @map("course_id")
+  prerequisiteCourseId String           @map("prerequisite_course_id")
+  type                 PrerequisiteType @default(REQUIRED)
+  minimumGrade         String?          @map("minimum_grade")
+  createdAt            DateTime         @default(now()) @map("created_at")
+
+  course               Course           @relation("CoursePrereqs", fields: [courseId], references: [id], onDelete: Cascade)
+  prerequisiteCourse   Course           @relation("PrereqOfCourses", fields: [prerequisiteCourseId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, prerequisiteCourseId, type])
+  @@index([courseId])
+  @@index([prerequisiteCourseId])
+  @@index([type])
+  @@map("course_prerequisites")
+}
+
+// ─── Teacher Assignments ──────────────────────────────────────────────────────
+
+model TeacherAssignment {
+  id                String           @id @default(uuid())
+  courseId          String           @map("course_id")
+  teacherUserId     String           @map("teacher_user_id")
+  academicTerm      String           @map("academic_term")
+  sectionCode       String           @map("section_code")
+  maxStudents       Int?             @map("max_students")
+  assignedAt        DateTime         @default(now()) @map("assigned_at")
+  assignedByUserId  String           @map("assigned_by_user_id")
+  status            AssignmentStatus @default(ACTIVE)
+
+  course            Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, academicTerm, sectionCode])
+  @@index([courseId])
+  @@index([teacherUserId])
+  @@index([academicTerm])
+  @@index([status])
+  @@map("teacher_assignments")
+}
+
+// ─── Course Tags ──────────────────────────────────────────────────────────────
+
+model CourseTag {
+  id        String   @id @default(uuid())
+  courseId  String   @map("course_id")
+  tagName   String   @map("tag_name")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, tagName])
+  @@index([courseId])
+  @@index([tagName])
+  @@map("course_tags")
+}
+
+// ─── Catalog Versions ─────────────────────────────────────────────────────────
+
+model CatalogVersion {
+  id            String    @id @default(uuid())
+  versionName   String    @unique @map("version_name")
+  effectiveFrom DateTime  @map("effective_from") @db.Date
+  effectiveTo   DateTime? @map("effective_to") @db.Date
+  isCurrent     Boolean   @default(false) @map("is_current")
+  notes         String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@index([isCurrent])
+  @@index([effectiveFrom])
+  @@map("catalog_versions")
+}
+
+// ─── Audit Logs ───────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?  @map("user_id")
+  action    String
+  entity    String?
+  entityId  String?  @map("entity_id")
+  metadata  Json?
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([action])
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

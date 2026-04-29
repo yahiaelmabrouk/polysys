@@ -1,0 +1,232 @@
+// Students Service Prisma schema
+// Owns: student records, profiles, contacts, attendance, academic history snapshots, notes.
+// Does NOT own: auth credentials, course catalog, enrollments, grades, finance, schedules.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum EnrollmentStatus {
+  ACTIVE
+  PROBATION
+  SUSPENDED
+  GRADUATED
+  WITHDRAWN
+  PENDING
+
+  @@map("enrollment_status")
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+
+  @@map("gender")
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+
+  @@map("attendance_status")
+}
+
+enum AcademicStanding {
+  GOOD
+  WARNING
+  PROBATION
+  DISMISSED
+
+  @@map("academic_standing")
+}
+
+enum ContactType {
+  EMAIL
+  PHONE
+  GUARDIAN
+  EMERGENCY
+
+  @@map("contact_type")
+}
+
+enum NoteVisibility {
+  ADMIN
+  ADVISOR
+  INTERNAL
+
+  @@map("note_visibility")
+}
+
+// ─── Students ─────────────────────────────────────────────────────────────────
+
+model Student {
+  id                       String           @id @default(uuid())
+  authUserId               String           @unique @map("auth_user_id")
+  studentNumber            String           @unique @map("student_number")
+  firstName                String           @map("first_name")
+  lastName                 String           @map("last_name")
+  dateOfBirth              DateTime         @map("date_of_birth") @db.Date
+  gender                   Gender?
+  nationality              String?
+  nationalId               String?          @map("national_id")
+  admissionDate            DateTime         @map("admission_date") @db.Date
+  expectedGraduationDate   DateTime?        @map("expected_graduation_date") @db.Date
+  departmentId             String?          @map("department_id")
+  programName              String           @map("program_name")
+  currentLevel             Int              @default(1) @map("current_level")
+  enrollmentStatus         EnrollmentStatus @default(PENDING) @map("enrollment_status")
+  advisorId                String?          @map("advisor_id")
+  createdAt                DateTime         @default(now()) @map("created_at")
+  updatedAt                DateTime         @updatedAt @map("updated_at")
+
+  profile                  StudentProfile?
+  contacts                 StudentContact[]
+  attendance               Attendance[]
+  academicHistory          AcademicHistory[]
+  notes                    StudentNote[]
+
+  @@index([authUserId])
+  @@index([studentNumber])
+  @@index([enrollmentStatus])
+  @@index([lastName])
+  @@index([departmentId])
+  @@index([advisorId])
+  @@index([programName])
+  @@map("students")
+}
+
+// ─── Student Profile (1:1) ────────────────────────────────────────────────────
+
+model StudentProfile {
+  id                       String   @id @default(uuid())
+  studentId                String   @unique @map("student_id")
+  profilePhotoUrl          String?  @map("profile_photo_url")
+  bio                      String?  @db.Text
+  addressLine1             String   @default("") @map("address_line_1")
+  addressLine2             String?  @map("address_line_2")
+  city                     String   @default("")
+  stateRegion              String   @default("") @map("state_region")
+  postalCode               String   @default("") @map("postal_code")
+  country                  String   @default("")
+  emergencyContactName     String   @default("") @map("emergency_contact_name")
+  emergencyContactPhone    String   @default("") @map("emergency_contact_phone")
+  emergencyContactRelation String   @default("") @map("emergency_contact_relation")
+  medicalNotes             String?  @map("medical_notes") @db.Text
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+
+  student                  Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+  @@map("student_profiles")
+}
+
+// ─── Attendance ───────────────────────────────────────────────────────────────
+
+model Attendance {
+  id              String           @id @default(uuid())
+  studentId       String           @map("student_id")
+  courseId        String           @map("course_id")
+  sessionDate     DateTime         @map("session_date") @db.Date
+  status          AttendanceStatus
+  markedByUserId  String           @map("marked_by_user_id")
+  notes           String?
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  student         Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, courseId, sessionDate])
+  @@index([studentId])
+  @@index([courseId, sessionDate])
+  @@index([sessionDate])
+  @@map("attendance")
+}
+
+// ─── Academic History (snapshots from Grades Service) ─────────────────────────
+
+model AcademicHistory {
+  id                String           @id @default(uuid())
+  studentId         String           @map("student_id")
+  semesterName      String           @map("semester_name")
+  creditsAttempted  Int              @map("credits_attempted")
+  creditsCompleted  Int              @map("credits_completed")
+  gpa               Decimal          @db.Decimal(4, 2)
+  cgpa              Decimal          @db.Decimal(4, 2)
+  academicStanding  AcademicStanding @map("academic_standing")
+  remarks           String?
+  recordedAt        DateTime         @default(now()) @map("recorded_at")
+
+  student           Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, semesterName])
+  @@index([studentId])
+  @@index([academicStanding])
+  @@map("academic_history")
+}
+
+// ─── Student Contacts (multiple) ──────────────────────────────────────────────
+
+model StudentContact {
+  id        String      @id @default(uuid())
+  studentId String      @map("student_id")
+  type      ContactType
+  label     String
+  value     String
+  isPrimary Boolean     @default(false) @map("is_primary")
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  student   Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+  @@index([type])
+  @@map("student_contacts")
+}
+
+// ─── Student Notes (admin/advisor) ────────────────────────────────────────────
+
+model StudentNote {
+  id              String         @id @default(uuid())
+  studentId       String         @map("student_id")
+  createdByUserId String         @map("created_by_user_id")
+  note            String         @db.Text
+  visibility      NoteVisibility @default(INTERNAL)
+  createdAt       DateTime       @default(now()) @map("created_at")
+
+  student         Student        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+  @@index([visibility])
+  @@map("student_notes")
+}
+
+// ─── Audit Logs ───────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?  @map("user_id")
+  action    String
+  entity    String?
+  entityId  String?  @map("entity_id")
+  metadata  Json?
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([action])
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
