@@ -1,0 +1,39 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "declaration": true,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "ES2021",
+    "sourceMap": true,
+    "outDir": "./dist",
+    "baseUrl": "./",
+    "incremental": true,
+    "skipLibCheck": true,
+    "strictNullChecks": true,
+    "noImplicitAny": true,
+    "strictBindCallApply": true,
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true,
+    "paths": {
+      "@/assessments/*": ["src/assessments/*"],
+      "@/grades/*": ["src/grades/*"],
+      "@/gradebook/*": ["src/gradebook/*"],
+      "@/gpa/*": ["src/gpa/*"],
+      "@/transcripts/*": ["src/transcripts/*"],
+      "@/regrades/*": ["src/regrades/*"],
+      "@/grading-scales/*": ["src/grading-scales/*"],
+      "@/results/*": ["src/results/*"],
+      "@/common/*": ["src/common/*"],
+      "@/config/*": ["src/config/*"],
+      "@/guards/*": ["src/guards/*"],
+      "@/strategies/*": ["src/strategies/*"],
+      "@/database/*": ["src/database/*"],
+      "@/events/*": ["src/events/*"],
+      "@/internal/*": ["src/internal/*"],
+      "@/clients/*": ["src/clients/*"]
+    }
+  }
+}
